@@ -1,4 +1,6 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": false
+  "buildCommand": false,
+  "devCommand": false,
+  "outputDirectory": ".",
+  "framework": null
 }
