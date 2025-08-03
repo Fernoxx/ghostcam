@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GhostCam Miniapp</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+    }
+    #cameraFeed {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      filter: brightness(1.5) contrast(2) hue-rotate(90deg) grayscale(0.5) saturate(3);
+    }
+    .ghostOverlay {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 30vw;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      opacity: 0;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    #uiLayer {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      background: rgba(0,0,0,0.6);
+    }
+    .hidden { display: none; }
+    button {
+      padding: 1rem 2rem;
+      background: limegreen;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <video id="cameraFeed" autoplay playsinline></video>
+  <img id="ghostOverlay" class="ghostOverlay" src="" alt="Ghost">
+  <div id="uiLayer">
+    <h1>GHOSTCAM</h1>
+    <button id="startBtn">Start GhostCam</button>
+    <button id="captureBtn" class="hidden">Capture & Mint</button>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const uiLayer = document.getElementById('uiLayer');
+    const ghostOverlay = document.getElementById('ghostOverlay');
+
+    const ghosts = [
+      'ghost1.png', // Transparent PNGs
+      'zombie_jumpscare_optimized.png',
+      'zombie_ground_optimized.png',
+      'nightvision_zombie_transparent.png'
+    ];
+
+    let ghostFound = false;
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        document.getElementById('cameraFeed').srcObject = stream;
+        uiLayer.style.background = 'transparent';
+        startBtn.classList.add('hidden');
+        captureBtn.classList.remove('hidden');
+
+        // Random ghost for this session
+        const selectedGhost = ghosts[Math.floor(Math.random() * ghosts.length)];
+        ghostOverlay.src = selectedGhost;
+
+      } catch (err) {
+        alert('Camera access denied.');
+      }
+    });
+
+    window.addEventListener('deviceorientation', (event) => {
+      const tiltX = event.beta;  // front-back
+      const tiltY = event.gamma; // left-right
+      if (ghostFound) return;
+
+      // Ghost appears when tilting phone to a specific angle
+      if (tiltX > 20 && tiltX < 40 && tiltY > -10 && tiltY < 10) {
+        ghostFound = true;
+        triggerJumpScare();
+      }
+    });
+
+    function triggerJumpScare() {
+      ghostOverlay.style.opacity = '1';
+      ghostOverlay.style.transform = 'translate(-50%, -50%) scale(2)';
+      let scareSound = new Audio('jumpscare.mp3');
+      scareSound.play();
+      setTimeout(() => {
+        ghostOverlay.style.transform = 'translate(-50%, -50%) scale(1)';
+      }, 1000);
+    }
+
+    captureBtn.addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const ctx = canvas.getContext('2d');
+      const video = document.getElementById('cameraFeed');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const ghost = document.getElementById('ghostOverlay');
+      ctx.drawImage(ghost, (canvas.width / 2) - (ghost.width), (canvas.height / 2) - (ghost.height));
+      const dataURL = canvas.toDataURL('image/png');
+
+      // TODO: Connect this image (dataURL) to mint flow
+      alert('Snapshot Captured. Now mint it!');
+      console.log(dataURL);
+    });
+  </script>
+</body>
+</html>
