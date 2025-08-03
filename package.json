@@ -1,0 +1,12 @@
+{
+  "name": "ghostcam-miniapp",
+  "version": "1.0.0",
+  "description": "GhostCam Farcaster Miniapp",
+  "scripts": {
+    "dev": "echo 'This is a static site'"
+  },
+  "dependencies": {
+    "ethers": "^6.0.0",
+    "node-fetch": "^3.0.0"
+  }
+}

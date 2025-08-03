@@ -49,6 +49,8 @@
       margin-top: 1rem;
     }
   </style>
+  <!-- Farcaster Miniapp SDK -->
+  <script src="https://unpkg.com/@farcaster/frame-sdk@0.0.20/dist/sdk.js"></script>
 </head>
 <body>
   <video id="cameraFeed" autoplay playsinline></video>
@@ -59,19 +61,30 @@
     <button id="captureBtn" class="hidden">Capture & Mint</button>
   </div>
 
-  <script type="module">
-    import { sdk } from '@farcaster/miniapp-sdk';
-
+  <script>
     // Initialize SDK first
     async function initialize() {
-      await sdk.actions.ready();
-      console.log('SDK Ready');
-      const context = sdk.context;
-      console.log('Context:', context);
+      // Wait for SDK to be available
+      if (typeof window.Farcaster === 'undefined') {
+        console.log('Farcaster SDK not found, running in standalone mode');
+        initializeApp();
+        return;
+      }
+
+      const sdk = window.Farcaster;
       
-      // Check for camera access
-      const hasCameraAccess = sdk.context.features?.cameraAndMicrophoneAccess;
-      console.log('Camera Access:', hasCameraAccess);
+      try {
+        await sdk.actions.ready();
+        console.log('SDK Ready');
+        const context = sdk.context;
+        console.log('Context:', context);
+        
+        // Check for camera access
+        const hasCameraAccess = sdk.context.features?.cameraAndMicrophoneAccess;
+        console.log('Camera Access:', hasCameraAccess);
+      } catch (error) {
+        console.log('SDK initialization error:', error);
+      }
       
       // Initialize the app after SDK is ready
       initializeApp();
@@ -84,10 +97,7 @@
       const ghostOverlay = document.getElementById('ghostOverlay');
 
       const ghosts = [
-        '/public/ghost1.png', // Transparent PNGs
-        '/public/zombie_jumpscare_optimized.png',
-        '/public/zombie_ground_optimized.png',
-        '/public/nightvision_zombie_transparent.png'
+        '/public/ghost1.png' // Add more ghost images here when available
       ];
 
       let ghostFound = false;
@@ -124,8 +134,9 @@
       function triggerJumpScare() {
         ghostOverlay.style.opacity = '1';
         ghostOverlay.style.transform = 'translate(-50%, -50%) scale(2)';
-        let scareSound = new Audio('/public/jumpscare.mp3');
-        scareSound.play();
+        // Uncomment when jumpscare.mp3 is added to public folder
+        // let scareSound = new Audio('/public/jumpscare.mp3');
+        // scareSound.play();
         setTimeout(() => {
           ghostOverlay.style.transform = 'translate(-50%, -50%) scale(1)';
         }, 1000);
@@ -133,17 +144,20 @@
 
       async function mintGhostNFT(imageData) {
         try {
-          // Get user context from SDK
-          const userContext = sdk.context;
-          console.log('User context for minting:', userContext);
+          // Get SDK from window
+          const sdk = window.Farcaster;
+          let walletAddress = '0x0000000000000000000000000000000000000000';
+          
+          // Get user context from SDK if available
+          if (sdk && sdk.context) {
+            const userContext = sdk.context;
+            console.log('User context for minting:', userContext);
+            walletAddress = userContext.user?.publicAddress || walletAddress;
+          }
           
           // Show loading state
           captureBtn.textContent = 'Minting...';
           captureBtn.disabled = true;
-          
-          // Get wallet address from Farcaster context
-          // For now, we'll use a placeholder - in production, this would come from the user's Farcaster profile
-          const walletAddress = userContext.user?.publicAddress || '0x0000000000000000000000000000000000000000';
           
           // Call the mint API
           const response = await fetch('/api/mint', {
@@ -162,7 +176,7 @@
           if (result.success) {
             alert(`NFT minted successfully! Transaction hash: ${result.txHash}`);
             // Optionally open the transaction in a frame
-            if (sdk.actions.openFrame) {
+            if (sdk && sdk.actions && sdk.actions.openFrame) {
               await sdk.actions.openFrame({
                 url: `https://basescan.org/tx/${result.txHash}`
               });
