@@ -51,13 +51,19 @@
   </style>
   <!-- Farcaster Miniapp SDK -->
   <script src="https://unpkg.com/@farcaster/frame-sdk@0.0.20/dist/sdk.js"></script>
+  <!-- Viem for contract interaction -->
+  <script src="https://unpkg.com/viem@2.2.0/dist/index.umd.js"></script>
 </head>
 <body>
   <video id="cameraFeed" autoplay playsinline></video>
   <img id="ghostOverlay" class="ghostOverlay" src="" alt="Ghost">
   <div id="uiLayer">
     <h1>GHOSTCAM</h1>
-    <button id="startBtn">Start GhostCam</button>
+    <div id="walletSection">
+      <button id="connectWalletBtn">Connect Wallet</button>
+      <p id="walletStatus" class="hidden"></p>
+    </div>
+    <button id="startBtn" class="hidden">Start GhostCam</button>
     <button id="captureBtn" class="hidden">Capture & Mint</button>
   </div>
 
@@ -91,6 +97,7 @@
     }
 
     function initializeApp() {
+      const connectWalletBtn = document.getElementById('connectWalletBtn');
       const startBtn = document.getElementById('startBtn');
       const captureBtn = document.getElementById('captureBtn');
       const uiLayer = document.getElementById('uiLayer');
@@ -101,6 +108,9 @@
       ];
 
       let ghostFound = false;
+
+      // Wallet connection event listener
+      connectWalletBtn.addEventListener('click', connectWallet);
 
       startBtn.addEventListener('click', async () => {
         try {
@@ -142,51 +152,121 @@
         }, 1000);
       }
 
+      // Contract details
+      const CONTRACT_ADDRESS = '0x422d2d64835c76570dbe858bd58fadfd85b7cd67';
+      const CONTRACT_ABI = [
+        {
+          "inputs": [{"internalType": "string", "name": "tokenURI", "type": "string"}],
+          "name": "mintWithURI",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ];
+      
+      // NFT Storage API Key - Replace with your actual key
+      const NFT_STORAGE_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweDhBNWM5OUIzNDYyNTdCOWY4MUQ3N0IwRjM0MzYyMzQ2NWI5NGQ4OTIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTczNjQ0MzI0MzM1MywibmFtZSI6ImdIb3N0Q2FtIn0.GXsnebfHPSWzs_HuRAJO7bqZUlhqUe6MiqGEWoGIzOc';
+      
+      let currentAccount = null;
+      let walletClient = null;
+
+      async function connectWallet() {
+        try {
+          const connectWalletBtn = document.getElementById('connectWalletBtn');
+          const walletStatus = document.getElementById('walletStatus');
+          const startBtn = document.getElementById('startBtn');
+          
+          connectWalletBtn.textContent = 'Connecting...';
+          connectWalletBtn.disabled = true;
+          
+          // Check if we're in a Farcaster miniapp or have ethereum provider
+          if (window.ethereum) {
+            // Request account access
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            currentAccount = accounts[0];
+            
+            // Create wallet client using Viem
+            walletClient = window.viem.createWalletClient({
+              account: currentAccount,
+              chain: window.viem.base,
+              transport: window.viem.custom(window.ethereum)
+            });
+            
+            walletStatus.textContent = `Connected: ${currentAccount.slice(0,6)}...${currentAccount.slice(-4)}`;
+            walletStatus.classList.remove('hidden');
+            connectWalletBtn.classList.add('hidden');
+            startBtn.classList.remove('hidden');
+            
+            console.log('Wallet connected:', currentAccount);
+          } else {
+            throw new Error('No wallet found. Please use a wallet-enabled browser or the Farcaster app.');
+          }
+        } catch (error) {
+          console.error('Wallet connection failed:', error);
+          alert('Failed to connect wallet: ' + error.message);
+          connectWalletBtn.textContent = 'Connect Wallet';
+          connectWalletBtn.disabled = false;
+        }
+      }
+
       async function mintGhostNFT(imageData) {
         try {
-          // Get SDK from window
-          const sdk = window.Farcaster;
-          let walletAddress = '0x0000000000000000000000000000000000000000';
-          
-          // Get user context from SDK if available
-          if (sdk && sdk.context) {
-            const userContext = sdk.context;
-            console.log('User context for minting:', userContext);
-            walletAddress = userContext.user?.publicAddress || walletAddress;
+          if (!currentAccount || !walletClient) {
+            alert('Please connect your wallet first');
+            return;
           }
           
           // Show loading state
           captureBtn.textContent = 'Minting...';
           captureBtn.disabled = true;
           
-          // Call the mint API
-          const response = await fetch('/api/mint', {
+          // 1. Upload to IPFS using NFT.Storage
+          console.log('Uploading to IPFS...');
+          const blob = await fetch(imageData).then(r => r.blob());
+          
+          const uploadResponse = await fetch('https://api.nft.storage/upload', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${NFT_STORAGE_API_KEY}`,
+              'Content-Type': 'application/octet-stream',
             },
-            body: JSON.stringify({
-              imageData: imageData,
-              walletAddress: walletAddress
-            })
+            body: blob
           });
           
-          const result = await response.json();
-          
-          if (result.success) {
-            alert(`NFT minted successfully! Transaction hash: ${result.txHash}`);
-            // Optionally open the transaction in a frame
-            if (sdk && sdk.actions && sdk.actions.openFrame) {
-              await sdk.actions.openFrame({
-                url: `https://basescan.org/tx/${result.txHash}`
-              });
-            }
-          } else {
-            alert(`Minting failed: ${result.message}`);
+          if (!uploadResponse.ok) {
+            throw new Error('Failed to upload to IPFS');
           }
+          
+          const uploadResult = await uploadResponse.json();
+          const tokenURI = `ipfs://${uploadResult.value.cid}`;
+          console.log('Uploaded to IPFS:', tokenURI);
+          
+          // 2. Call mintWithURI contract function
+          console.log('Calling mint contract...');
+          const { writeContract } = window.wagmiUtils;
+          
+          const hash = await walletClient.writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'mintWithURI',
+            args: [tokenURI],
+            account: currentAccount
+          });
+          
+          console.log('Transaction hash:', hash);
+          alert(`NFT minted successfully! Transaction hash: ${hash}`);
+          
+          // Optionally open the transaction in Basescan
+          const sdk = window.Farcaster;
+          if (sdk && sdk.actions && sdk.actions.openFrame) {
+            await sdk.actions.openFrame({
+              url: `https://basescan.org/tx/${hash}`
+            });
+          }
+          
         } catch (error) {
           console.error('Minting error:', error);
-          alert('Failed to mint NFT. Please try again.');
+          alert('Failed to mint NFT: ' + error.message);
         } finally {
           captureBtn.textContent = 'Capture & Mint';
           captureBtn.disabled = false;
