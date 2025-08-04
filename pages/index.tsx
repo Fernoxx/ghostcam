@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { WagmiConfig, useConnect, useAccount, useWriteContract } from "wagmi";
-import { wagmiConfig } from "../wagmiConfig";
+import { useConnect, useAccount, useWriteContract } from "wagmi";
 import { GHOSTCAM_ABI } from "../lib/GhostCamABI";
 
 const CONTRACT_ADDRESS = "0x422d2d64835c76570dbe858bd58fadfd85b7cd67";
@@ -266,8 +265,7 @@ void main() {
   };
 
   return (
-    <WagmiConfig config={wagmiConfig}>
-      <div
+    <div
         style={{
           width: "100vw",
           height: "100vh",
@@ -329,7 +327,6 @@ void main() {
             {minting ? "Minting…" : "Capture & Mint"}
           </button>
         )}
-      </div>
-    </WagmiConfig>
+    </div>
   );
 }

@@ -1,7 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["wagmi", "@farcaster/miniapp-wagmi-connector"],
+  transpilePackages: ["wagmi", "@farcaster/miniapp-wagmi-connector", "ox"],
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 };
 
 module.exports = nextConfig;

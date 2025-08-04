@@ -1,17 +1,15 @@
-import { createConfig, configureChains } from "wagmi";
+import { createConfig, http } from "wagmi";
 import { coinbaseWallet, injected } from "wagmi/connectors";
 import { base } from "wagmi/chains";
-import { publicProvider } from "wagmi/providers/public";
 
-// Configure Base chain (L2) with public RPC provider
-export const { chains, publicClient } = configureChains([base], [publicProvider()]);
-
-// Create Wagmi client that automatically connects to the first available connector.
+// Create Wagmi client with new v2 API
 export const wagmiConfig = createConfig({
-  autoConnect: true,
+  chains: [base],
   connectors: [
-    injected({ chains }),
-    coinbaseWallet({ chains, appName: "GhostCam" })
+    injected(),
+    coinbaseWallet({ appName: "GhostCam" })
   ],
-  publicClient
+  transports: {
+    [base.id]: http()
+  }
 });
