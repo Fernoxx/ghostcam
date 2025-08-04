@@ -5,8 +5,8 @@ import { GHOSTCAM_ABI } from "../lib/GhostCamABI";
 
 const CONTRACT_ADDRESS = "0x422d2d64835c76570dbe858bd58fadfd85b7cd67";
 
-// Replace with your NFT.Storage key (exposed on frontend → create temp tokens with limited scope)
-const NFT_STORAGE_TOKEN = "YOUR_NFT_STORAGE_API_KEY";
+// Expose your NFT.Storage token through a public env var (e.g. NEXT_PUBLIC_NFT_STORAGE_KEY)
+const NFT_STORAGE_TOKEN = process.env.NEXT_PUBLIC_NFT_STORAGE_KEY as string | undefined;
 
 export default function Home() {
   /**  Wallet hooks  */
