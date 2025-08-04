@@ -48,9 +48,15 @@
       cursor: pointer;
       margin-top: 1rem;
     }
+    button:disabled {
+      background: gray;
+      cursor: not-allowed;
+    }
   </style>
   <!-- Farcaster Miniapp SDK -->
   <script src="https://unpkg.com/@farcaster/frame-sdk@0.0.20/dist/sdk.js"></script>
+  <!-- Ethers.js for contract interaction -->
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
 </head>
 <body>
   <video id="cameraFeed" autoplay playsinline></video>
@@ -62,6 +68,15 @@
   </div>
 
   <script>
+    // NFT.Storage API Key - REPLACE THIS WITH YOUR ACTUAL KEY
+    const NFT_STORAGE_API_KEY = 'YOUR_NFT_STORAGE_API_KEY_HERE';
+    
+    // Contract details
+    const CONTRACT_ADDRESS = '0x422d2d64835c76570dbe858bd58fadfd85b7cd67';
+    const CONTRACT_ABI = [
+      "function mintWithURI(string memory tokenURI) external"
+    ];
+
     // Initialize SDK first
     async function initialize() {
       // Wait for SDK to be available
@@ -142,51 +157,122 @@
         }, 1000);
       }
 
+      async function uploadToIPFS(blob) {
+        // Create form data with the blob
+        const formData = new FormData();
+        formData.append('file', blob);
+
+        const response = await fetch('https://api.nft.storage/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${NFT_STORAGE_API_KEY}`,
+          },
+          body: blob
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.value.cid;
+      }
+
       async function mintGhostNFT(imageData) {
         try {
-          // Get SDK from window
-          const sdk = window.Farcaster;
-          let walletAddress = '0x0000000000000000000000000000000000000000';
-          
-          // Get user context from SDK if available
-          if (sdk && sdk.context) {
-            const userContext = sdk.context;
-            console.log('User context for minting:', userContext);
-            walletAddress = userContext.user?.publicAddress || walletAddress;
-          }
-          
           // Show loading state
-          captureBtn.textContent = 'Minting...';
+          captureBtn.textContent = 'Uploading to IPFS...';
           captureBtn.disabled = true;
           
-          // Call the mint API
-          const response = await fetch('/api/mint', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              imageData: imageData,
-              walletAddress: walletAddress
-            })
-          });
+          // Convert dataURL to blob
+          const response = await fetch(imageData);
+          const blob = await response.blob();
           
-          const result = await response.json();
+          // Upload to IPFS using NFT.Storage API
+          const cid = await uploadToIPFS(blob);
+          const tokenURI = `ipfs://${cid}`;
+          console.log('Image uploaded to IPFS:', tokenURI);
           
-          if (result.success) {
-            alert(`NFT minted successfully! Transaction hash: ${result.txHash}`);
-            // Optionally open the transaction in a frame
-            if (sdk && sdk.actions && sdk.actions.openFrame) {
-              await sdk.actions.openFrame({
-                url: `https://basescan.org/tx/${result.txHash}`
-              });
+          captureBtn.textContent = 'Connecting wallet...';
+          
+          // Initialize provider and signer
+          let provider, signer;
+          
+          // Check for Farcaster SDK wallet first
+          if (window.Farcaster && window.Farcaster.wallet) {
+            console.log('Using Farcaster wallet');
+            provider = new ethers.providers.Web3Provider(window.Farcaster.wallet);
+            signer = provider.getSigner();
+          } 
+          // Then check for injected wallet (Coinbase Wallet, MetaMask, etc.)
+          else if (window.ethereum) {
+            console.log('Using browser wallet');
+            // Request account access
+            await window.ethereum.request({ method: 'eth_requestAccounts' });
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            signer = provider.getSigner();
+            
+            // Ensure we're on Base network (chain ID 8453)
+            const chainId = await provider.getNetwork().then(n => n.chainId);
+            if (chainId !== 8453) {
+              // Request network switch to Base
+              try {
+                await window.ethereum.request({
+                  method: 'wallet_switchEthereumChain',
+                  params: [{ chainId: '0x2105' }], // 8453 in hex
+                });
+              } catch (switchError) {
+                // This error code indicates that the chain has not been added to MetaMask/wallet
+                if (switchError.code === 4902) {
+                  await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                      chainId: '0x2105',
+                      chainName: 'Base',
+                      nativeCurrency: {
+                        name: 'Ether',
+                        symbol: 'ETH',
+                        decimals: 18
+                      },
+                      rpcUrls: ['https://mainnet.base.org'],
+                      blockExplorerUrls: ['https://basescan.org']
+                    }]
+                  });
+                } else {
+                  throw switchError;
+                }
+              }
             }
           } else {
-            alert(`Minting failed: ${result.message}`);
+            throw new Error('No wallet found. Please install Coinbase Wallet or use the Farcaster app.');
+          }
+          
+          captureBtn.textContent = 'Minting NFT...';
+          
+          // Create contract instance
+          const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+          
+          // Call mintWithURI function
+          const tx = await contract.mintWithURI(tokenURI);
+          console.log('Transaction sent:', tx.hash);
+          
+          captureBtn.textContent = 'Confirming...';
+          
+          // Wait for transaction confirmation
+          const receipt = await tx.wait();
+          console.log('Transaction confirmed:', receipt);
+          
+          alert(`NFT minted successfully! Transaction hash: ${tx.hash}`);
+          
+          // Optionally open the transaction in a frame
+          if (window.Farcaster && window.Farcaster.actions && window.Farcaster.actions.openFrame) {
+            await window.Farcaster.actions.openFrame({
+              url: `https://basescan.org/tx/${tx.hash}`
+            });
           }
         } catch (error) {
           console.error('Minting error:', error);
-          alert('Failed to mint NFT. Please try again.');
+          alert(`Failed to mint NFT: ${error.message || 'Unknown error'}`);
         } finally {
           captureBtn.textContent = 'Capture & Mint';
           captureBtn.disabled = false;
