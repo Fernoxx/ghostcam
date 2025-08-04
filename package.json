@@ -1,0 +1,19 @@
+{
+  "name": "ghostcam-miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "13.5.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "wagmi": "^2.6.5",
+    "viem": "^1.5.0",
+    "@coinbase/wallet-sdk": "^3.16.0",
+    "@farcaster/miniapp-wagmi-connector": "^0.1.3"
+  }
+}
