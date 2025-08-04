@@ -6,10 +6,22 @@ import { base } from "wagmi/chains";
 export const wagmiConfig = createConfig({
   chains: [base],
   connectors: [
-    injected(),
-    coinbaseWallet({ appName: "GhostCam" })
+    injected({
+      target() {
+        return {
+          id: 'injected',
+          name: 'Browser Wallet',
+          provider: typeof window !== 'undefined' ? window.ethereum : undefined,
+        }
+      },
+    }),
+    coinbaseWallet({ 
+      appName: "GhostCam",
+      appLogoUrl: "/favicon.svg"
+    })
   ],
   transports: {
     [base.id]: http()
-  }
+  },
+  ssr: true,
 });

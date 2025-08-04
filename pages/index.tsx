@@ -22,8 +22,16 @@ export default function Home() {
 
   /* ========== Wallet auto-connect on load ========== */
   useEffect(() => {
-    if (!isConnected && connectors.length > 0) {
-      connect({ connector: connectors[0] });
+    // Only auto-connect if user hasn't explicitly disconnected
+    const hasUserDisconnected = localStorage.getItem('user-disconnected');
+    if (!isConnected && connectors.length > 0 && !hasUserDisconnected) {
+      // Try to connect to the first available connector
+      const preferredConnector = connectors.find(c => c.name.includes('Browser')) || connectors[0];
+      try {
+        connect({ connector: preferredConnector });
+      } catch (error) {
+        console.log('Auto-connect failed:', error);
+      }
     }
   }, [isConnected, connectors, connect]);
 
@@ -300,9 +308,45 @@ void main() {
             textShadow: "0 0 8px #00ff88",
           }}
         >
-          <span>{isConnected ? `🪙 ${address?.slice(0, 6)}…${address?.slice(-4)}` : "Connecting wallet…"}</span>
+          <span>
+            {isConnected 
+              ? `🪙 ${address?.slice(0, 6)}…${address?.slice(-4)}` 
+              : connectors.length > 0 
+                ? "Tap to connect wallet" 
+                : "No wallet found"
+            }
+          </span>
           <span>{scare ? "👻 GHOST DETECTED!" : "Night-Vision Active"}</span>
         </div>
+
+        {/* Wallet connection button */}
+        {!isConnected && connectors.length > 0 && (
+          <button
+            onClick={() => {
+              const preferredConnector = connectors.find(c => c.name.includes('Browser')) || connectors[0];
+              connect({ connector: preferredConnector });
+            }}
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              padding: "1rem 2rem",
+              background: "rgba(0, 255, 136, 0.2)",
+              border: "2px solid #00ff88",
+              borderRadius: "8px",
+              color: "#00ff88",
+              fontSize: "1.1rem",
+              fontWeight: 700,
+              fontFamily: "monospace",
+              boxShadow: "0 0 12px #00ff88",
+              cursor: "pointer",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            Connect Wallet
+          </button>
+        )}
 
         {glReady && isConnected && (
           <button
