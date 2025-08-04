@@ -49,6 +49,8 @@
       margin-top: 1rem;
     }
   </style>
+  <!-- Farcaster Miniapp SDK -->
+  <script src="https://unpkg.com/@farcaster/frame-sdk@0.0.20/dist/sdk.js"></script>
 </head>
 <body>
   <video id="cameraFeed" autoplay playsinline></video>
@@ -60,74 +62,155 @@
   </div>
 
   <script>
-    const startBtn = document.getElementById('startBtn');
-    const captureBtn = document.getElementById('captureBtn');
-    const uiLayer = document.getElementById('uiLayer');
-    const ghostOverlay = document.getElementById('ghostOverlay');
+    // Initialize SDK first
+    async function initialize() {
+      // Wait for SDK to be available
+      if (typeof window.Farcaster === 'undefined') {
+        console.log('Farcaster SDK not found, running in standalone mode');
+        initializeApp();
+        return;
+      }
 
-    const ghosts = [
-      'ghost1.png', // Transparent PNGs
-      'zombie_jumpscare_optimized.png',
-      'zombie_ground_optimized.png',
-      'nightvision_zombie_transparent.png'
-    ];
-
-    let ghostFound = false;
-
-    startBtn.addEventListener('click', async () => {
+      const sdk = window.Farcaster;
+      
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        document.getElementById('cameraFeed').srcObject = stream;
-        uiLayer.style.background = 'transparent';
-        startBtn.classList.add('hidden');
-        captureBtn.classList.remove('hidden');
-
-        // Random ghost for this session
-        const selectedGhost = ghosts[Math.floor(Math.random() * ghosts.length)];
-        ghostOverlay.src = selectedGhost;
-
-      } catch (err) {
-        alert('Camera access denied.');
+        await sdk.actions.ready();
+        console.log('SDK Ready');
+        const context = sdk.context;
+        console.log('Context:', context);
+        
+        // Check for camera access
+        const hasCameraAccess = sdk.context.features?.cameraAndMicrophoneAccess;
+        console.log('Camera Access:', hasCameraAccess);
+      } catch (error) {
+        console.log('SDK initialization error:', error);
       }
-    });
-
-    window.addEventListener('deviceorientation', (event) => {
-      const tiltX = event.beta;  // front-back
-      const tiltY = event.gamma; // left-right
-      if (ghostFound) return;
-
-      // Ghost appears when tilting phone to a specific angle
-      if (tiltX > 20 && tiltX < 40 && tiltY > -10 && tiltY < 10) {
-        ghostFound = true;
-        triggerJumpScare();
-      }
-    });
-
-    function triggerJumpScare() {
-      ghostOverlay.style.opacity = '1';
-      ghostOverlay.style.transform = 'translate(-50%, -50%) scale(2)';
-      let scareSound = new Audio('jumpscare.mp3');
-      scareSound.play();
-      setTimeout(() => {
-        ghostOverlay.style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 1000);
+      
+      // Initialize the app after SDK is ready
+      initializeApp();
     }
 
-    captureBtn.addEventListener('click', () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      const ctx = canvas.getContext('2d');
-      const video = document.getElementById('cameraFeed');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const ghost = document.getElementById('ghostOverlay');
-      ctx.drawImage(ghost, (canvas.width / 2) - (ghost.width), (canvas.height / 2) - (ghost.height));
-      const dataURL = canvas.toDataURL('image/png');
+    function initializeApp() {
+      const startBtn = document.getElementById('startBtn');
+      const captureBtn = document.getElementById('captureBtn');
+      const uiLayer = document.getElementById('uiLayer');
+      const ghostOverlay = document.getElementById('ghostOverlay');
 
-      // TODO: Connect this image (dataURL) to mint flow
-      alert('Snapshot Captured. Now mint it!');
-      console.log(dataURL);
-    });
+      const ghosts = [
+        '/public/ghost1.png' // Add more ghost images here when available
+      ];
+
+      let ghostFound = false;
+
+      startBtn.addEventListener('click', async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          document.getElementById('cameraFeed').srcObject = stream;
+          uiLayer.style.background = 'transparent';
+          startBtn.classList.add('hidden');
+          captureBtn.classList.remove('hidden');
+
+          // Random ghost for this session
+          const selectedGhost = ghosts[Math.floor(Math.random() * ghosts.length)];
+          ghostOverlay.src = selectedGhost;
+
+        } catch (err) {
+          alert('Camera access denied.');
+        }
+      });
+
+      window.addEventListener('deviceorientation', (event) => {
+        const tiltX = event.beta;  // front-back
+        const tiltY = event.gamma; // left-right
+        if (ghostFound) return;
+
+        // Ghost appears when tilting phone to a specific angle
+        if (tiltX > 20 && tiltX < 40 && tiltY > -10 && tiltY < 10) {
+          ghostFound = true;
+          triggerJumpScare();
+        }
+      });
+
+      function triggerJumpScare() {
+        ghostOverlay.style.opacity = '1';
+        ghostOverlay.style.transform = 'translate(-50%, -50%) scale(2)';
+        // Uncomment when jumpscare.mp3 is added to public folder
+        // let scareSound = new Audio('/public/jumpscare.mp3');
+        // scareSound.play();
+        setTimeout(() => {
+          ghostOverlay.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 1000);
+      }
+
+      async function mintGhostNFT(imageData) {
+        try {
+          // Get SDK from window
+          const sdk = window.Farcaster;
+          let walletAddress = '0x0000000000000000000000000000000000000000';
+          
+          // Get user context from SDK if available
+          if (sdk && sdk.context) {
+            const userContext = sdk.context;
+            console.log('User context for minting:', userContext);
+            walletAddress = userContext.user?.publicAddress || walletAddress;
+          }
+          
+          // Show loading state
+          captureBtn.textContent = 'Minting...';
+          captureBtn.disabled = true;
+          
+          // Call the mint API
+          const response = await fetch('/api/mint', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              imageData: imageData,
+              walletAddress: walletAddress
+            })
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            alert(`NFT minted successfully! Transaction hash: ${result.txHash}`);
+            // Optionally open the transaction in a frame
+            if (sdk && sdk.actions && sdk.actions.openFrame) {
+              await sdk.actions.openFrame({
+                url: `https://basescan.org/tx/${result.txHash}`
+              });
+            }
+          } else {
+            alert(`Minting failed: ${result.message}`);
+          }
+        } catch (error) {
+          console.error('Minting error:', error);
+          alert('Failed to mint NFT. Please try again.');
+        } finally {
+          captureBtn.textContent = 'Capture & Mint';
+          captureBtn.disabled = false;
+        }
+      }
+
+      captureBtn.addEventListener('click', () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('cameraFeed');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const ghost = document.getElementById('ghostOverlay');
+        ctx.drawImage(ghost, (canvas.width / 2) - (ghost.width), (canvas.height / 2) - (ghost.height));
+        const dataURL = canvas.toDataURL('image/png');
+
+        // Connect to mint flow
+        mintGhostNFT(dataURL);
+      });
+    }
+
+    // Call initialize when the page loads
+    initialize();
   </script>
 </body>
 </html>
