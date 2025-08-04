@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useConnect, useAccount, useWriteContract } from "wagmi";
 import { GHOSTCAM_ABI } from "../lib/GhostCamABI";
+import { farcasterSDK } from "../lib/farcaster";
 
 const CONTRACT_ADDRESS = "0x422d2d64835c76570dbe858bd58fadfd85b7cd67";
 
@@ -19,21 +20,54 @@ export default function Home() {
   const [minting, setMinting] = useState(false);
   const [glReady, setGlReady] = useState(false);
   const [scare, setScare] = useState(false);
+  const [farcasterUser, setFarcasterUser] = useState<any>(null);
+  const [isFarcasterEnv, setIsFarcasterEnv] = useState(false);
+
+  /* ========== Farcaster SDK initialization ========== */
+  useEffect(() => {
+    const initializeFarcaster = async () => {
+      try {
+        await farcasterSDK.initialize();
+        const isFarcaster = farcasterSDK.isFarcasterEnvironment();
+        setIsFarcasterEnv(isFarcaster);
+        
+        if (isFarcaster) {
+          const user = await farcasterSDK.getUser();
+          setFarcasterUser(user);
+          
+          // Try to connect Farcaster wallet first
+          const farcasterWallet = await farcasterSDK.connectWallet();
+          if (farcasterWallet) {
+            console.log('Connected to Farcaster wallet:', farcasterWallet.address);
+          }
+        }
+        
+        // Call ready after initialization
+        await farcasterSDK.ready();
+      } catch (error) {
+        console.log('Farcaster initialization error:', error);
+      }
+    };
+
+    initializeFarcaster();
+  }, []);
 
   /* ========== Wallet auto-connect on load ========== */
   useEffect(() => {
-    // Only auto-connect if user hasn't explicitly disconnected
+    // Only auto-connect if user hasn't explicitly disconnected and not in Farcaster env
     const hasUserDisconnected = localStorage.getItem('user-disconnected');
-    if (!isConnected && connectors.length > 0 && !hasUserDisconnected) {
-      // Try to connect to the first available connector
-      const preferredConnector = connectors.find(c => c.name.includes('Browser')) || connectors[0];
-      try {
-        connect({ connector: preferredConnector });
-      } catch (error) {
-        console.log('Auto-connect failed:', error);
+    if (!isConnected && connectors.length > 0 && !hasUserDisconnected && !isFarcasterEnv) {
+      // Try to connect to Coinbase wallet
+      const coinbaseConnector = connectors.find(c => c.name.includes('Coinbase'));
+      if (coinbaseConnector) {
+        try {
+          connect({ connector: coinbaseConnector });
+        } catch (error) {
+          console.log('Auto-connect failed:', error);
+        }
       }
     }
-  }, [isConnected, connectors, connect]);
+  }, [isConnected, connectors, connect, isFarcasterEnv]);
 
   /* ========== Camera + WebGL bootstrap ========== */
   useEffect(() => {
@@ -309,22 +343,26 @@ void main() {
           }}
         >
           <span>
-            {isConnected 
-              ? `🪙 ${address?.slice(0, 6)}…${address?.slice(-4)}` 
-              : connectors.length > 0 
-                ? "Tap to connect wallet" 
-                : "No wallet found"
+            {farcasterUser && isFarcasterEnv
+              ? `👤 ${farcasterUser.displayName || farcasterUser.username}` 
+              : isConnected 
+                ? `🪙 ${address?.slice(0, 6)}…${address?.slice(-4)}` 
+                : connectors.length > 0 
+                  ? "Tap to connect wallet" 
+                  : "No wallet found"
             }
           </span>
           <span>{scare ? "👻 GHOST DETECTED!" : "Night-Vision Active"}</span>
         </div>
 
         {/* Wallet connection button */}
-        {!isConnected && connectors.length > 0 && (
+        {!isConnected && !farcasterUser && connectors.length > 0 && (
           <button
             onClick={() => {
-              const preferredConnector = connectors.find(c => c.name.includes('Browser')) || connectors[0];
-              connect({ connector: preferredConnector });
+              const coinbaseConnector = connectors.find(c => c.name.includes('Coinbase'));
+              if (coinbaseConnector) {
+                connect({ connector: coinbaseConnector });
+              }
             }}
             style={{
               position: "absolute",
@@ -344,11 +382,11 @@ void main() {
               backdropFilter: "blur(10px)",
             }}
           >
-            Connect Wallet
+            Connect Coinbase Wallet
           </button>
         )}
 
-        {glReady && isConnected && (
+        {glReady && (isConnected || farcasterUser) && (
           <button
             onClick={handleCaptureAndMint}
             disabled={minting}
