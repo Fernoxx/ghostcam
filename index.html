@@ -243,14 +243,12 @@
           
           // 2. Call mintWithURI contract function
           console.log('Calling mint contract...');
-          const { writeContract } = window.wagmiUtils;
           
           const hash = await walletClient.writeContract({
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
             functionName: 'mintWithURI',
-            args: [tokenURI],
-            account: currentAccount
+            args: [tokenURI]
           });
           
           console.log('Transaction hash:', hash);
