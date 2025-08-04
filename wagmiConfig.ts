@@ -1,5 +1,5 @@
 import { createConfig, configureChains } from "wagmi";
-import { coinbaseWallet, farcasterWallet } from "@farcaster/miniapp-wagmi-connector";
+import { coinbaseWallet } from "wagmi/connectors";
 import { base } from "wagmi/chains";
 import { publicProvider } from "wagmi/providers/public";
 
@@ -10,7 +10,6 @@ export const { chains, publicClient } = configureChains([base], [publicProvider(
 export const wagmiConfig = createConfig({
   autoConnect: true,
   connectors: [
-    farcasterWallet({ chains }),
     coinbaseWallet({ chains, appName: "GhostCam" })
   ],
   publicClient
