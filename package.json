@@ -13,7 +13,7 @@
     "react-dom": "18.2.0",
     "wagmi": "^2.16.1",
     "viem": "^2.2.0",
-    "@coinbase/wallet-sdk": "^3.16.0",
+    "@coinbase/wallet-sdk": "^3.12.0",
     "@farcaster/miniapp-wagmi-connector": "^0.1.3"
   }
 }
