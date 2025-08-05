@@ -20,14 +20,14 @@
       object-fit: cover;
       filter: brightness(1.5) contrast(2) hue-rotate(90deg) grayscale(0.5) saturate(3);
     }
-    .ghostOverlay {
+    #ghostCanvas {
       position: absolute;
-      top: 50%; left: 50%;
-      width: 30vw;
-      transform: translate(-50%, -50%);
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       pointer-events: none;
-      opacity: 0;
-      transition: transform 0.2s, opacity 0.2s;
+      z-index: 2;
     }
     #uiLayer {
       position: absolute;
@@ -51,56 +51,164 @@
   </style>
   <!-- Farcaster Miniapp SDK -->
   <script src="https://unpkg.com/@farcaster/frame-sdk@0.0.20/dist/sdk.js"></script>
+  <!-- Viem for contract interaction -->
+  <script src="https://unpkg.com/viem@2.2.0/dist/index.umd.js"></script>
 </head>
 <body>
   <video id="cameraFeed" autoplay playsinline></video>
-  <img id="ghostOverlay" class="ghostOverlay" src="" alt="Ghost">
+  <canvas id="ghostCanvas"></canvas>
   <div id="uiLayer">
     <h1>GHOSTCAM</h1>
-    <button id="startBtn">Start GhostCam</button>
+    <div id="walletSection">
+      <button id="connectWalletBtn">Connect Wallet</button>
+      <p id="walletStatus" class="hidden"></p>
+    </div>
+    <button id="startBtn" class="hidden">Start GhostCam</button>
     <button id="captureBtn" class="hidden">Capture & Mint</button>
   </div>
 
   <script>
-    // Initialize SDK first
+        // Initialize SDK first
     async function initialize() {
-      // Wait for SDK to be available
-      if (typeof window.Farcaster === 'undefined') {
-        console.log('Farcaster SDK not found, running in standalone mode');
-        initializeApp();
-        return;
-      }
-
-      const sdk = window.Farcaster;
-      
       try {
-        await sdk.actions.ready();
-        console.log('SDK Ready');
-        const context = sdk.context;
-        console.log('Context:', context);
+        // Try to import Farcaster SDK
+        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
         
-        // Check for camera access
-        const hasCameraAccess = sdk.context.features?.cameraAndMicrophoneAccess;
-        console.log('Camera Access:', hasCameraAccess);
+        // Call ready to hide loading screen
+        await sdk.actions.ready();
+        console.log('Farcaster SDK Ready');
+        
       } catch (error) {
-        console.log('SDK initialization error:', error);
+        console.log('Not in Farcaster miniapp environment:', error);
       }
       
-      // Initialize the app after SDK is ready
+      // Initialize the app
       initializeApp();
     }
 
     function initializeApp() {
+      const connectWalletBtn = document.getElementById('connectWalletBtn');
       const startBtn = document.getElementById('startBtn');
       const captureBtn = document.getElementById('captureBtn');
       const uiLayer = document.getElementById('uiLayer');
-      const ghostOverlay = document.getElementById('ghostOverlay');
+      const ghostCanvas = document.getElementById('ghostCanvas');
+      const ghostCtx = ghostCanvas.getContext('2d');
 
-      const ghosts = [
-        '/public/ghost1.png' // Add more ghost images here when available
-      ];
-
+      let tiltX = 0, tiltY = 0;
+      let ghosts = [];
+      let animationRunning = false;
       let ghostFound = false;
+
+      // Resize canvas to match window
+      function resizeCanvas() {
+        ghostCanvas.width = window.innerWidth;
+        ghostCanvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      // Create a ghost object
+      function createGhost() {
+        return {
+          x: Math.random() * ghostCanvas.width,
+          y: Math.random() * ghostCanvas.height,
+          size: 50 + Math.random() * 100,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.5 + Math.random(),
+          alpha: 0.3 + Math.random() * 0.3,
+          visible: false
+        };
+      }
+
+      // Initialize ghosts
+      for (let i = 0; i < 3; i++) {
+        ghosts.push(createGhost());
+      }
+
+      // Draw ghost shape
+      function drawGhost(ghost) {
+        if (!ghost.visible) return;
+        
+        ghostCtx.save();
+        ghostCtx.globalAlpha = ghost.alpha;
+        ghostCtx.filter = 'blur(8px)';
+        
+        const x = ghost.x + tiltY * 20 + Math.sin(ghost.phase + Date.now() * 0.001 * ghost.speed) * 20;
+        const y = ghost.y + tiltX * 20 + Math.cos(ghost.phase + Date.now() * 0.001 * ghost.speed) * 20;
+        const size = ghost.size;
+        
+        // Draw classic ghost shape
+        ghostCtx.beginPath();
+        ghostCtx.arc(x, y, size * 0.5, Math.PI, 0); // Head (half circle)
+        ghostCtx.lineTo(x + size * 0.5, y + size * 0.7); // Right side
+        
+        // Wavy bottom
+        for (let i = 0; i <= 6; i++) {
+          const waveX = x + size * 0.5 - (i * size / 6);
+          const waveY = y + size * 0.7 + Math.sin(Date.now() * 0.005 + i) * 10;
+          if (i === 0) {
+            ghostCtx.lineTo(waveX, waveY);
+          } else {
+            ghostCtx.lineTo(waveX, waveY);
+          }
+        }
+        
+        ghostCtx.lineTo(x - size * 0.5, y + size * 0.7); // Left side
+        ghostCtx.closePath();
+        ghostCtx.fillStyle = 'rgba(255,255,255,0.8)';
+        ghostCtx.fill();
+        
+        // Draw eyes
+        ghostCtx.globalAlpha = 1;
+        ghostCtx.filter = 'none';
+        ghostCtx.fillStyle = 'black';
+        ghostCtx.beginPath();
+        ghostCtx.arc(x - size * 0.15, y - size * 0.1, size * 0.08, 0, Math.PI * 2);
+        ghostCtx.arc(x + size * 0.15, y - size * 0.1, size * 0.08, 0, Math.PI * 2);
+        ghostCtx.fill();
+        
+        ghostCtx.restore();
+      }
+
+      // Animation loop
+      function animateGhosts() {
+        if (!animationRunning) return;
+        
+        ghostCtx.clearRect(0, 0, ghostCanvas.width, ghostCanvas.height);
+        ghosts.forEach(drawGhost);
+        requestAnimationFrame(animateGhosts);
+      }
+
+      // Device orientation handler
+      window.addEventListener('deviceorientation', (event) => {
+        tiltX = event.beta / 30; // Normalize to -1 to 1
+        tiltY = event.gamma / 30;
+        
+        if (!ghostFound && animationRunning) {
+          // Ghost appears when tilting phone to specific angle
+          if (Math.abs(tiltX) > 0.3 || Math.abs(tiltY) > 0.3) {
+            ghostFound = true;
+            triggerGhostAppearance();
+          }
+        }
+      });
+
+      function triggerGhostAppearance() {
+        ghosts.forEach(ghost => {
+          ghost.visible = true;
+        });
+        
+        // Make ghosts fade out after 3 seconds
+        setTimeout(() => {
+          ghosts.forEach(ghost => {
+            ghost.visible = false;
+          });
+          ghostFound = false;
+        }, 3000);
+      }
+
+      // Wallet connection event listener
+      connectWalletBtn.addEventListener('click', connectWallet);
 
       startBtn.addEventListener('click', async () => {
         try {
@@ -110,83 +218,159 @@
           startBtn.classList.add('hidden');
           captureBtn.classList.remove('hidden');
 
-          // Random ghost for this session
-          const selectedGhost = ghosts[Math.floor(Math.random() * ghosts.length)];
-          ghostOverlay.src = selectedGhost;
+          // Start ghost animation
+          animationRunning = true;
+          animateGhosts();
 
         } catch (err) {
           alert('Camera access denied.');
         }
       });
 
-      window.addEventListener('deviceorientation', (event) => {
-        const tiltX = event.beta;  // front-back
-        const tiltY = event.gamma; // left-right
-        if (ghostFound) return;
 
-        // Ghost appears when tilting phone to a specific angle
-        if (tiltX > 20 && tiltX < 40 && tiltY > -10 && tiltY < 10) {
-          ghostFound = true;
-          triggerJumpScare();
+
+      // Contract details
+      const CONTRACT_ADDRESS = '0x422d2d64835c76570dbe858bd58fadfd85b7cd67';
+      const CONTRACT_ABI = [
+        {
+          "inputs": [{"internalType": "string", "name": "tokenURI", "type": "string"}],
+          "name": "mintWithURI",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
         }
-      });
+      ];
+      
+      // NFT Storage API Key - Replace with your actual key
+      const NFT_STORAGE_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweDhBNWM5OUIzNDYyNTdCOWY4MUQ3N0IwRjM0MzYyMzQ2NWI5NGQ4OTIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTczNjQ0MzI0MzM1MywibmFtZSI6ImdIb3N0Q2FtIn0.GXsnebfHPSWzs_HuRAJO7bqZUlhqUe6MiqGEWoGIzOc';
+      
+      let currentAccount = null;
+      let walletClient = null;
 
-      function triggerJumpScare() {
-        ghostOverlay.style.opacity = '1';
-        ghostOverlay.style.transform = 'translate(-50%, -50%) scale(2)';
-        // Uncomment when jumpscare.mp3 is added to public folder
-        // let scareSound = new Audio('/public/jumpscare.mp3');
-        // scareSound.play();
-        setTimeout(() => {
-          ghostOverlay.style.transform = 'translate(-50%, -50%) scale(1)';
-        }, 1000);
+      // ONE Connect Wallet button that auto-detects Farcaster OR Coinbase
+      async function connectWallet() {
+        try {
+          const connectWalletBtn = document.getElementById('connectWalletBtn');
+          const walletStatus = document.getElementById('walletStatus');
+          const startBtn = document.getElementById('startBtn');
+          
+          connectWalletBtn.textContent = 'Connecting...';
+          connectWalletBtn.disabled = true;
+          
+          let walletType = 'Unknown';
+          
+          // 🎯 Auto-detect: Farcaster OR Coinbase
+          
+          // 1. Check if we're in Farcaster app first
+          try {
+            const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+            const context = await sdk.context;
+            
+            if (context?.user) {
+              // We're in Farcaster! User is already authenticated
+              currentAccount = context.user.custodyAddress || context.user.verifiedAddresses?.[0];
+              walletType = 'Farcaster';
+              
+              console.log('🔥 Detected Farcaster app - user auto-connected:', context.user.username);
+            }
+          } catch (e) {
+            console.log('🔍 Not in Farcaster app, checking for other wallets...');
+          }
+          
+          // 2. If not Farcaster, connect to any available wallet (Coinbase, etc.)
+          if (!currentAccount && window.ethereum) {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            currentAccount = accounts[0];
+            walletType = 'Coinbase Wallet'; // Most likely Coinbase in this context
+            
+            console.log('💙 Connected to external wallet (likely Coinbase)');
+          }
+          
+          if (!currentAccount) {
+            throw new Error('❌ No wallet detected. Please open this app in Farcaster or Coinbase Wallet.');
+          }
+          
+          // Create wallet client for contract interactions
+          walletClient = window.viem.createWalletClient({
+            chain: window.viem.base,
+            transport: window.viem.custom(window.ethereum)
+          });
+          
+          // Update UI - ONE button connects to whatever wallet is available
+          walletStatus.textContent = `✅ ${walletType}: ${currentAccount.slice(0,6)}...${currentAccount.slice(-4)}`;
+          walletStatus.classList.remove('hidden');
+          connectWalletBtn.classList.add('hidden');
+          startBtn.classList.remove('hidden');
+          
+          console.log(`✅ Connected to ${walletType} successfully!`);
+          
+        } catch (error) {
+          console.error('❌ Wallet connection failed:', error);
+          
+          const connectWalletBtn = document.getElementById('connectWalletBtn');
+          connectWalletBtn.textContent = 'Connect Wallet';
+          connectWalletBtn.disabled = false;
+          
+          alert(`Failed to connect: ${error.message}`);
+        }
       }
 
       async function mintGhostNFT(imageData) {
         try {
-          // Get SDK from window
-          const sdk = window.Farcaster;
-          let walletAddress = '0x0000000000000000000000000000000000000000';
-          
-          // Get user context from SDK if available
-          if (sdk && sdk.context) {
-            const userContext = sdk.context;
-            console.log('User context for minting:', userContext);
-            walletAddress = userContext.user?.publicAddress || walletAddress;
+          if (!currentAccount || !walletClient) {
+            alert('Please connect your wallet first');
+            return;
           }
           
           // Show loading state
           captureBtn.textContent = 'Minting...';
           captureBtn.disabled = true;
           
-          // Call the mint API
-          const response = await fetch('/api/mint', {
+          // 1. Upload to IPFS using NFT.Storage
+          console.log('Uploading to IPFS...');
+          const blob = await fetch(imageData).then(r => r.blob());
+          
+          const uploadResponse = await fetch('https://api.nft.storage/upload', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${NFT_STORAGE_API_KEY}`,
+              'Content-Type': 'application/octet-stream',
             },
-            body: JSON.stringify({
-              imageData: imageData,
-              walletAddress: walletAddress
-            })
+            body: blob
           });
           
-          const result = await response.json();
-          
-          if (result.success) {
-            alert(`NFT minted successfully! Transaction hash: ${result.txHash}`);
-            // Optionally open the transaction in a frame
-            if (sdk && sdk.actions && sdk.actions.openFrame) {
-              await sdk.actions.openFrame({
-                url: `https://basescan.org/tx/${result.txHash}`
-              });
-            }
-          } else {
-            alert(`Minting failed: ${result.message}`);
+          if (!uploadResponse.ok) {
+            throw new Error('Failed to upload to IPFS');
           }
+          
+          const uploadResult = await uploadResponse.json();
+          const tokenURI = `ipfs://${uploadResult.value.cid}`;
+          console.log('Uploaded to IPFS:', tokenURI);
+          
+          // 2. Call mintWithURI contract function
+          console.log('Calling mint contract...');
+          
+          const hash = await walletClient.writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'mintWithURI',
+            args: [tokenURI]
+          });
+          
+          console.log('Transaction hash:', hash);
+          alert(`NFT minted successfully! Transaction hash: ${hash}`);
+          
+          // Optionally open the transaction in Basescan
+          const sdk = window.Farcaster;
+          if (sdk && sdk.actions && sdk.actions.openFrame) {
+            await sdk.actions.openFrame({
+              url: `https://basescan.org/tx/${hash}`
+            });
+          }
+          
         } catch (error) {
           console.error('Minting error:', error);
-          alert('Failed to mint NFT. Please try again.');
+          alert('Failed to mint NFT: ' + error.message);
         } finally {
           captureBtn.textContent = 'Capture & Mint';
           captureBtn.disabled = false;
@@ -198,10 +382,14 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         const ctx = canvas.getContext('2d');
+        
+        // Draw the camera feed
         const video = document.getElementById('cameraFeed');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const ghost = document.getElementById('ghostOverlay');
-        ctx.drawImage(ghost, (canvas.width / 2) - (ghost.width), (canvas.height / 2) - (ghost.height));
+        
+        // Draw the ghost canvas on top
+        ctx.drawImage(ghostCanvas, 0, 0);
+        
         const dataURL = canvas.toDataURL('image/png');
 
         // Connect to mint flow
