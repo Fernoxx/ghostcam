@@ -70,26 +70,62 @@
   <script>
     // Initialize SDK first
     async function initialize() {
-      // Wait for SDK to be available
-      if (typeof window.Farcaster === 'undefined') {
-        console.log('Farcaster SDK not found, running in standalone mode');
+      // Import Farcaster SDK dynamically
+      try {
+        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+        
+        // Get user context - user is already authenticated in Farcaster
+        const context = await sdk.context;
+        console.log('Farcaster Context:', context);
+        
+                 // Extract real user data - user is already authenticated in Farcaster
+         if (context?.user) {
+           // Get user's custody address for transactions
+           currentAccount = context.user.custodyAddress || context.user.verifiedAddresses?.[0] || context.user.verifications?.[0];
+           
+           console.log('🎯 Auto-connected Farcaster user:', {
+             fid: context.user.fid,
+             username: context.user.username,
+             displayName: context.user.displayName,
+             pfpUrl: context.user.pfpUrl,
+             custodyAddress: currentAccount
+           });
+           
+           // Update UI to show auto-connected state
+           const walletStatus = document.getElementById('walletStatus');
+           const connectWalletBtn = document.getElementById('connectWalletBtn');
+           const startBtn = document.getElementById('startBtn');
+           
+           if (currentAccount) {
+             walletStatus.textContent = `🔥 Farcaster: ${context.user.username} (${currentAccount.slice(0,6)}...${currentAccount.slice(-4)})`;
+             walletStatus.classList.remove('hidden');
+             connectWalletBtn.classList.add('hidden');
+             startBtn.classList.remove('hidden');
+             
+             // Create wallet client for contract interactions using Farcaster's provider
+             try {
+               const provider = await sdk.wallet?.createEthereumProvider() || window.ethereum;
+               walletClient = window.viem.createWalletClient({
+                 account: currentAccount,
+                 chain: window.viem.base,
+                 transport: window.viem.custom(provider)
+               });
+               console.log('✅ Wallet client ready for transactions');
+             } catch (err) {
+               console.log('⚠️ Wallet client setup failed, will use fallback:', err);
+             }
+           }
+         }
+        
+        // Call ready to hide loading screen
+        await sdk.actions.ready();
+        console.log('Farcaster SDK Ready');
+        
+      } catch (error) {
+        console.log('Farcaster SDK not available, running in standalone mode:', error);
+        // Fallback to manual wallet connection
         initializeApp();
         return;
-      }
-
-      const sdk = window.Farcaster;
-      
-      try {
-        await sdk.actions.ready();
-        console.log('SDK Ready');
-        const context = sdk.context;
-        console.log('Context:', context);
-        
-        // Check for camera access
-        const hasCameraAccess = sdk.context.features?.cameraAndMicrophoneAccess;
-        console.log('Camera Access:', hasCameraAccess);
-      } catch (error) {
-        console.log('SDK initialization error:', error);
       }
       
       // Initialize the app after SDK is ready
@@ -257,6 +293,7 @@
       let currentAccount = null;
       let walletClient = null;
 
+      // Fallback wallet connection for non-Farcaster environments
       async function connectWallet() {
         try {
           const connectWalletBtn = document.getElementById('connectWalletBtn');
@@ -266,36 +303,8 @@
           connectWalletBtn.textContent = 'Connecting...';
           connectWalletBtn.disabled = true;
           
-          // Use Farcaster SDK's built-in wallet functionality
-          const sdk = window.Farcaster;
-          
-          if (sdk && sdk.wallet) {
-            // Request wallet connection using Farcaster SDK
-            const walletResponse = await sdk.wallet.requestPermissions();
-            
-            if (walletResponse && walletResponse.isPermissionGranted) {
-              // Get the user's address
-              currentAccount = walletResponse.address || await sdk.wallet.getAddress();
-              
-              // Create wallet client using the Farcaster provider
-              const provider = sdk.wallet.createEthereumProvider();
-              walletClient = window.viem.createWalletClient({
-                account: currentAccount,
-                chain: window.viem.base,
-                transport: window.viem.custom(provider)
-              });
-              
-              walletStatus.textContent = `Connected: ${currentAccount.slice(0,6)}...${currentAccount.slice(-4)}`;
-              walletStatus.classList.remove('hidden');
-              connectWalletBtn.classList.add('hidden');
-              startBtn.classList.remove('hidden');
-              
-              console.log('Farcaster wallet connected:', currentAccount);
-            } else {
-              throw new Error('Wallet permission denied');
-            }
-          } else if (window.ethereum) {
-            // Fallback to regular ethereum provider (Coinbase Wallet)
+          if (window.ethereum) {
+            // Use regular ethereum provider (Coinbase Wallet, MetaMask, etc.)
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             currentAccount = accounts[0];
             
@@ -310,7 +319,7 @@
             connectWalletBtn.classList.add('hidden');
             startBtn.classList.remove('hidden');
             
-            console.log('Coinbase wallet connected:', currentAccount);
+            console.log('External wallet connected:', currentAccount);
           } else {
             throw new Error('No wallet found. Please use a wallet-enabled browser or the Farcaster app.');
           }
